@@ -1,11 +1,9 @@
-# Don't forget install Pillow package!
-
 import sys
 from os import listdir
 from os import makedirs
 from os.path import isfile, join
 from os.path import exists
-from PIL import Image
+import cv2
 
 usage = "<-in-dir> <dir name> <-out-dir> <dir name>\n\
 in-dir - directory that contains RGB images\n\
@@ -25,15 +23,13 @@ else:
     print usage
     sys.exit()
 
-rgb2yuv = (
-    0.299, 0.587, 0.114, 0,
-    -0.14713, -0.28886, 0.436, 0,
-    0.615, -0.51499, -0.10001, 0)
-
 if not exists(out_dir):
     makedirs(out_dir)
 
 for fname in files_to_cvt:
-    rgb_img = Image.open(join(in_dir, fname))
-    yuv_img = rgb_img.convert('RGB', rgb2yuv)
-    yuv_img.save(join(out_dir, fname))
+    # rgb_img = Image.open(join(in_dir, fname))
+    # yuv_img = rgb_img.convert('RGB', rgb2yuv)
+    # yuv_img.save(join(out_dir, fname))
+    bgr_img = cv2.imread(join(in_dir, fname))
+    yuv_img = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2YUV)
+    cv2.imwrite(join(out_dir, fname), yuv_img)
