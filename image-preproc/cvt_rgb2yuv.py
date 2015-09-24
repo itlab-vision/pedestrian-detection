@@ -27,9 +27,6 @@ if not exists(out_dir):
     makedirs(out_dir)
 
 for fname in files_to_cvt:
-    # rgb_img = Image.open(join(in_dir, fname))
-    # yuv_img = rgb_img.convert('RGB', rgb2yuv)
-    # yuv_img.save(join(out_dir, fname))
     bgr_img = cv2.imread(join(in_dir, fname))
     yuv_img = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2YUV)
     cv2.imwrite(join(out_dir, fname), yuv_img)
