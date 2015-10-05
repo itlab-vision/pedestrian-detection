@@ -27,10 +27,10 @@ def processFiles(files_to_proc, in_dir, out_dir):
 
     for fname in files_to_proc:
         src_img = cv2.imread(join(in_dir, fname))
-        # yuv_img = cvtRGB2YUV(src_img)
+        yuv_img = cvtRGB2YUV(src_img)
 
         # Generate 126x78 images with context ratio 1.4
-        resized_img = resizeImage(src_img)
+        resized_img = resizeImage(yuv_img)
         saveImage(resized_img, out_dir, fname)
 
         # Mirror along the horizontal axis
@@ -50,9 +50,6 @@ def processFiles(files_to_proc, in_dir, out_dir):
                 scaled_img_f = scaleImageInFizedSize(flipped_img, rnd.uniform(0.95, 1.05), rnd.uniform(0.95, 1.05))
                 saveImage(scaled_img, out_dir, generateFileName(fname, 's' + str(i)))
                 saveImage(scaled_img_f, out_dir, generateFileName(fname, 'sf' + str(i)))
-
-        # scaled_img = scaleImageInFizedSize(resized_img, 0.957980871028,  1.02162841581)
-        # saveImage(scaled_img, out_dir, generateFileName(fname, 'test'))
 
         print 'Processed image: ' + join(in_dir, fname)
 
@@ -90,7 +87,6 @@ def translateImage(src_img, x_shift, y_shift):
 
 def scaleImageInFizedSize(src_img, x_scale, y_scale):
     resized_img = cv2.resize(src_img, (0, 0), fx = x_scale, fy = y_scale)
-    # print 'resized img shape:', resized_img.shape
     x_diff = (src_img.shape[1] - resized_img.shape[1]) / 2
     y_diff = (src_img.shape[0] - resized_img.shape[0]) / 2
     if (x_diff < 0):
@@ -106,7 +102,6 @@ def scaleImageInFizedSize(src_img, x_scale, y_scale):
     if (right < 0):
         right = 0
     ret_img = addReplicatedBorder(resized_img, top, bottom, left, right)
-    # print 'params: ', x_scale, ', ', y_scale, 'img_shape: ', ret_img.shape
     return ret_img
 
 def addReplicatedBorder(src_img, top, bottom, left, right):
@@ -128,7 +123,6 @@ def addReplicatedBorder(src_img, top, bottom, left, right):
     return dst_img
 
 def saveImage(image, out_dir, fname):
-    print image.shape
     cv2.imwrite(join(out_dir, fname), image)
 
 def generateFileName(src_fname, appendix):
