@@ -27,10 +27,10 @@ def processFiles(files_to_proc, in_dir, out_dir):
 
     for fname in files_to_proc:
         src_img = cv2.imread(join(in_dir, fname))
-        yuv_img = cvtRGB2YUV(src_img)
+        # yuv_img = cvtRGB2YUV(src_img)
 
         # Generate 126x78 images with context ratio 1.4
-        resized_img = resizeImage(yuv_img)
+        resized_img = resizeImage(src_img)
         saveImage(resized_img, out_dir, fname)
 
         # Mirror along the horizontal axis
@@ -50,6 +50,9 @@ def processFiles(files_to_proc, in_dir, out_dir):
                 scaled_img_f = scaleImageInFizedSize(flipped_img, rnd.uniform(0.95, 1.05), rnd.uniform(0.95, 1.05))
                 saveImage(scaled_img, out_dir, generateFileName(fname, 's' + str(i)))
                 saveImage(scaled_img_f, out_dir, generateFileName(fname, 'sf' + str(i)))
+
+        # scaled_img = scaleImageInFizedSize(resized_img, 0.957980871028,  1.02162841581)
+        # saveImage(scaled_img, out_dir, generateFileName(fname, 'test'))
 
         print 'Processed image: ' + join(in_dir, fname)
 
@@ -87,20 +90,45 @@ def translateImage(src_img, x_shift, y_shift):
 
 def scaleImageInFizedSize(src_img, x_scale, y_scale):
     resized_img = cv2.resize(src_img, (0, 0), fx = x_scale, fy = y_scale)
+    # print 'resized img shape:', resized_img.shape
     x_diff = (src_img.shape[1] - resized_img.shape[1]) / 2
     y_diff = (src_img.shape[0] - resized_img.shape[0]) / 2
     if (x_diff < 0):
         x_diff = 0
     if (y_diff < 0):
         y_diff = 0
-    replicated_img = cv2.copyMakeBorder(resized_img, y_diff, y_diff, x_diff, x_diff, cv2.BORDER_REPLICATE)
-    size = replicated_img.shape
-    center = (size[0] / 2, size[1] / 2)
-    disired_size = src_img.shape
-    diff = (disired_size[0] / 2, disired_size[1] / 2)
-    return replicated_img[center[0] - diff[0] : center[0] + diff[0], center[1] - diff[1] : center[1] + diff[1]]
+    top = y_diff
+    bottom = src_img.shape[0] - resized_img.shape[0] - y_diff
+    left = x_diff
+    right = src_img.shape[1] - resized_img.shape[1] - x_diff
+    if (bottom < 0):
+        bottom = 0
+    if (right < 0):
+        right = 0
+    ret_img = addReplicatedBorder(resized_img, top, bottom, left, right)
+    # print 'params: ', x_scale, ', ', y_scale, 'img_shape: ', ret_img.shape
+    return ret_img
+
+def addReplicatedBorder(src_img, top, bottom, left, right):
+    dst_img_size = (src_img.shape[0] + top + bottom, src_img.shape[1] + left + right, src_img.shape[2])
+    dst_img = np.zeros(dst_img_size, src_img.dtype)
+    dst_img[top : dst_img.shape[0] - bottom, left : dst_img.shape[1] - right] = src_img
+    for y in range(0, top):
+        for x in range(0, dst_img.shape[1]):
+            dst_img[y, x] = dst_img[top, x]
+    for y in range(dst_img.shape[0] - bottom, dst_img.shape[0]):
+        for x in range(0, dst_img.shape[1]):
+            dst_img[y, x] = dst_img[dst_img.shape[0] - bottom - 1, x]
+    for x in range(0, left):
+        for y in range(0, dst_img.shape[0]):
+            dst_img[y, x] = dst_img[y, left]
+    for x in range(dst_img.shape[1] - right, dst_img.shape[1]):
+        for y in range(0, dst_img.shape[0]):
+            dst_img[y, x] = dst_img[y, dst_img.shape[1] - right - 1]
+    return dst_img
 
 def saveImage(image, out_dir, fname):
+    print image.shape
     cv2.imwrite(join(out_dir, fname), image)
 
 def generateFileName(src_fname, appendix):
