@@ -93,12 +93,34 @@ def scaleImageInFizedSize(src_img, x_scale, y_scale):
         x_diff = 0
     if (y_diff < 0):
         y_diff = 0
-    replicated_img = cv2.copyMakeBorder(resized_img, y_diff, y_diff, x_diff, x_diff, cv2.BORDER_REPLICATE)
-    size = replicated_img.shape
-    center = (size[0] / 2, size[1] / 2)
-    disired_size = src_img.shape
-    diff = (disired_size[0] / 2, disired_size[1] / 2)
-    return replicated_img[center[0] - diff[0] : center[0] + diff[0], center[1] - diff[1] : center[1] + diff[1]]
+    top = y_diff
+    bottom = src_img.shape[0] - resized_img.shape[0] - y_diff
+    left = x_diff
+    right = src_img.shape[1] - resized_img.shape[1] - x_diff
+    if (bottom < 0):
+        bottom = 0
+    if (right < 0):
+        right = 0
+    ret_img = addReplicatedBorder(resized_img, top, bottom, left, right)
+    return ret_img
+
+def addReplicatedBorder(src_img, top, bottom, left, right):
+    dst_img_size = (src_img.shape[0] + top + bottom, src_img.shape[1] + left + right, src_img.shape[2])
+    dst_img = np.zeros(dst_img_size, src_img.dtype)
+    dst_img[top : dst_img.shape[0] - bottom, left : dst_img.shape[1] - right] = src_img
+    for y in range(0, top):
+        for x in range(0, dst_img.shape[1]):
+            dst_img[y, x] = dst_img[top, x]
+    for y in range(dst_img.shape[0] - bottom, dst_img.shape[0]):
+        for x in range(0, dst_img.shape[1]):
+            dst_img[y, x] = dst_img[dst_img.shape[0] - bottom - 1, x]
+    for x in range(0, left):
+        for y in range(0, dst_img.shape[0]):
+            dst_img[y, x] = dst_img[y, left]
+    for x in range(dst_img.shape[1] - right, dst_img.shape[1]):
+        for y in range(0, dst_img.shape[0]):
+            dst_img[y, x] = dst_img[y, dst_img.shape[1] - right - 1]
+    return dst_img
 
 def saveImage(image, out_dir, fname):
     cv2.imwrite(join(out_dir, fname), image)
