@@ -4,11 +4,12 @@ from os import listdir
 import cv2
 import random as rnd
 
-def extract_negatives(in_img_fnames, in_img_dir, out_img_dir, desired_size, count):
-    batch_size = int(count / len(in_img_fnames)) + 1
+def extract_negatives(in_img_fnames, in_img_dir, out_img_dir, desired_size, count, annotation_dir, annotation_fnames):
+    img_fnames = get_img_fnames_without_pedestrians(annotation_dir, annotation_fnames, in_img_fnames)
+    batch_size = int(count / len(img_fnames)) + 1
     extracted = 0
-    for img_fname in in_img_fnames:
-        img_name = img_fname.split('.png')[0]
+    for img_fname in img_fnames:
+        img_name = img_fname.split('.png')[0]             
         img = cv2.imread(join(in_img_dir, img_fname))
         boxes = generate_boxes(img.shape[0:2][::-1], desired_size, min(batch_size, count - extracted))
         for i in range(0, len(boxes)):
@@ -31,30 +32,49 @@ def generate_boxes(img_size, desired_size, count):
         boxes.append((x, y, desired_size[0], desired_size[1]))
     return boxes
 
+def get_img_fnames_without_pedestrians(annotaion_dir, annotation_fnames, in_img_fnames):
+    good_img_fnames = []
+    for in_img_fname in in_img_fnames:
+        in_img_name = in_img_fname.split('.png')[0]
+        annotation_fname = in_img_name + '.txt'
+        if (annotation_fnames.count(annotation_fname) != 0):
+            f = open(join(annotation_dir, annotation_fname), 'r')
+            good = True
+            for line in f:
+                if (line.find('Pedestrian') != -1):
+                    good = False
+                    break
+            f.close()
+            if (good):
+                good_img_fnames.append(in_img_fname)
+    return good_img_fnames
 
 if __name__ == '__main__':
     help_message = '\
 Incorrect input parameters. Parameters must be as follow:\n\
 first - input images dir\n\
-second - output images dir (where you want to store negative images)\
-third - desired size in format wxh. For example: 36x108\n\
-forth - count of negatives to extract'
+second - annotation files dir\n\
+third - output images dir (where you want to store negative images)\
+forth - desired size in format wxh. For example: 36x108\n\
+fifth - count of negatives to extract'
 
     in_img_dir = ''
+    annotation_dir = ''
     out_img_dir = ''
     size_str = ''
     count_str = ''
     
-    if (len(sys.argv) >= 5):
+    if (len(sys.argv) >= 6):
         in_img_dir = sys.argv[1]
-        out_img_dir = sys.argv[2]
-        size_str = sys.argv[3]
-        count_str = sys.argv[4]
+        annotation_dir = sys.argv[2]
+        out_img_dir = sys.argv[3]
+        size_str = sys.argv[4]
+        count_str = sys.argv[5]
     else:
         print help_message
         exit()
 
-    if (not isdir(in_img_dir) or not isdir(out_img_dir)):
+    if (not isdir(in_img_dir) or not isdir(annotation_dir) or not isdir(out_img_dir)):
         print help_message
         exit()
 
@@ -67,5 +87,6 @@ forth - count of negatives to extract'
     count = int(count_str)
 
     in_img_fnames = [f for f in listdir(in_img_dir) if isfile(join(in_img_dir, f))]
+    annotation_fnames = [f for f in listdir(annotation_dir) if isfile(join(annotation_dir, f))]
 
-    extract_negatives(in_img_fnames, in_img_dir, out_img_dir, desired_size, count)
+    extract_negatives(in_img_fnames, in_img_dir, out_img_dir, desired_size, count, annotation_dir, annotation_fnames)
