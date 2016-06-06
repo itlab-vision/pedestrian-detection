@@ -2,14 +2,22 @@ require 'nn'
 require 'torch'
 require 'math'
 dt = require 'dt'
+utils = require 'utils'
+init = require 'init'
 
-batch_size = 10
-start_rows = {1, 1, 4, 4, 9, 9, 1, 1, 1, 4, 4, 4, 9, 1, 1, 1, 1, -1, 1, 1 }
-end_rows = {3, 3, 9, 9, 15, 15, 3, 9, 9, 9, 15, 15, 15, 3, 9, 15, 15, 17, 15, 15 }
-start_cols = {1, 3, 1, 3, 2, 4, 1, 1, 4, 1, 1, 4, 1, 1, 1, 1, 4, 1, 1, 1 }
-end_cols = {3, 5, 3, 5, 3, 5, 5, 2, 5, 5, 2, 5, 5, 5, 5, 2, 5, 5, 5, 5 }
+batch_size = init.batch_size
+learning_rate = init.learning_rate
+start_rows = init.start_rows
+end_rows = init.end_rows
+start_cols = init.start_cols
+end_cols = init.end_cols
+
+connections1 = init.connections1
+connections2 = init.connections2
 
 data = torch.rand(batch_size, 3, 84, 28)
+labels = torch.Tensor(batch_size, 2):fill(0)
+labels[{{}, {2}}] = torch.Tensor(batch_size, 1):fill(1)
 -- print(data)
 
 net = nn.Sequential()
@@ -41,21 +49,21 @@ net.b4 = rand_val * torch.rand(batch_size, #start_rows)
 net:add(nn.SpatialConvolution(3, 64, 9, 9))
 net:add(nn.Tanh())
 net:add(nn.Abs())
+
 -- Layer 3
 net:add(nn.SpatialAveragePooling(4, 4, 4, 4))
 
 -- Layer 4
-
 k_sizes = {}
 ppos = {}
-defw = torch.Tensor(batch_size, #start_rows, 4)
+net.defw = torch.Tensor(batch_size, #start_rows, 4)
 for i = 1, #start_rows do
     k_sizes[i] = {end_rows[i] - start_rows[i] + 1, end_cols[i] - start_cols[i] + 1}
     ppos[i] = {start_rows[i] + 2, start_cols[i]}
     if i ~= 18 then
-        defw[{{}, i, {}}] = torch.repeatTensor(torch.Tensor({0.05, 0.0, 0.05, 0.0}), batch_size, 1)
+        net.defw[{{}, i, {}}] = torch.repeatTensor(torch.Tensor({0.05, 0.0, 0.05, 0.0}), batch_size, 1)
     else
-        defw[{{}, i, {}}] = torch.repeatTensor(torch.Tensor({1000.0, 0.0, 1000.0, 0.0}), batch_size, 1)
+        net.defw[{{}, i, {}}] = torch.repeatTensor(torch.Tensor({1000.0, 0.0, 1000.0, 0.0}), batch_size, 1)
     end
 end
 
@@ -72,12 +80,15 @@ net:forward(data)
 -- print(net.output)
 defvector = torch.Tensor(net.output[1]:size(1), #net.output, 4)
 part_scores = torch.Tensor(net.output[1]:size(1), #net.output)
+mapSizes = torch.Tensor(#net.output, 2)
 
 for p = 1, #net.output do
     for k = 1, net.output[1]:size(1) do
         map = net.output[p][{k, {}, {}, {}}]:squeeze(1)
         local height = map:size()[1]
         local width = map:size()[2]
+        mapSizes[p][1] = height
+        mapSizes[p][2] = width
         -- print({height, width})
         local dst_col = torch.Tensor(height, width)
         local dst = torch.Tensor(height, width)
@@ -85,18 +96,17 @@ for p = 1, #net.output do
         local iy = torch.Tensor(height, width)
         local ix = torch.Tensor(height, width)
         for j = 1, width do
-            dt.dt1d_by_column(map, dst_col, iy_tmp, j, 0.05, 0.1)
+            dt.dt1d_by_column(map, dst_col, iy_tmp, j, -net.defw[{k, p, 3}], -net.defw[{k, p, 4}])
         end
         for i = 1, height do
-            dt.dt1d_by_row(dst_col, dst, ix, i, 0.05, 0.1)
+            dt.dt1d_by_row(dst_col, dst, ix, i, -net.defw[{k, p, 1}], -net.defw[{k, p, 2}])
         end
 
         -- print(map)
         -- print(dst)
         -- print(iy_tmp)
 
-        nan_mask = ix:ne(ix)
-        ix[nan_mask] = 0
+        ix = utils.avoid_nans(ix)
 
         for i = 1, height do
             for j = 1, width do
@@ -134,7 +144,74 @@ c2 = torch.reshape(net.c2, 1, net.c2:size(1))
 h3[{{}, {1, 14}}] = torch.sigmoid(-(h2 * net.w2 + torch.cmul(s3, c2:repeatTensor(part_scores:size(1), 1))))
 h3[{{}, {15}}] = 1.0
 
-targetout = torch.exp(h3 * net.w_class)
+targetout = torch.exp(h3 * net.w_class) -- may be sigmoid?!
 net.o = torch.cdiv(targetout, torch.repeatTensor(torch.sum(targetout, 2), 1, targetout:size(2)))
 
-print(net.o)
+-- ======= backward =======
+
+lp_w_class = net.o - labels   -- bsx2
+dLdw_class = h3:t() * lp_w_class
+dLdh3 = lp_w_class * net.w_class:t()  -- bsx15
+lp3 = dLdh3:cmul(h3):cmul(1 - h3) -- bsx15
+lp3 = lp3[{{}, {1, 14}}]
+dLdw2 = h2:t() * lp3
+dLdh2 = lp3 * net.w2:t()  -- bsx14
+lp2 = dLdh2:cmul(h2):cmul(1 - h2) -- bsx15
+lp2 = lp2[{{}, {1, 14}}]
+dLdw1 = h1:t() * lp2
+dLdh1 = lp2 * net.w1:t()  -- bsx7
+lp1 = dLdh1:cmul(h1):cmul(1 - h1) -- bsx7
+lp1 = lp1[{{}, {1, 6}}]
+
+dLds3 = lp3 * 1.0   -- bsx14
+dLds2 = lp2 * 1.0   -- bsx14
+dLds1 = lp1 * 1.0   -- bsx6
+
+dLdc = torch.Tensor(batch_size, #start_rows, 4)
+dLdc[{{}, {1, 6}, {}}] = dLds1[{{}, {1, 6}}]:repeatTensor(1, 1, 4):cmul(defvector[{{}, {1, 6}, {}}])
+dLdc[{{}, {7, 13}, {}}] = dLds2[{{}, {1, 7}}]:repeatTensor(1, 1, 4):cmul(defvector[{{}, {7, 13}, {}}])
+dLdc[{{}, {14, 20}, {}}] = dLds3[{{}, {1, 7}}]:repeatTensor(1, 1, 4):cmul(defvector[{{}, {14, 20}, {}}])
+
+dLds = {}
+dv = torch.Tensor(batch_size, #start_rows)
+dv[{{}, {1, 6}}] = dLds1[{{}, {1, 6}}]
+dv[{{}, {7, 13}}] = dLds2[{{}, {1, 7}}]
+dv[{{}, {14, 20}}] = dLds3[{{}, {1, 7}}]
+for p = 1, #start_rows do
+    dLds[p] = torch.Tensor(batch_size, 1, mapSizes[p][1], mapSizes[p][2])
+    for m = 1, batch_size do
+        d = torch.Tensor(1, mapSizes[p][1], mapSizes[p][2]):fill(dv[{m, p}])
+        dLds[p][{m, {}, {}}] = d
+    end
+end
+
+ddef = torch.Tensor(batch_size, #start_rows, 4)
+for m = 1, batch_size do
+    for p = 1, #start_rows do
+        d = torch.Tensor(4):fill(dv[{m, p}])
+        ddef[{m, p, {}}] = d
+    end
+end
+ddefw = ddef:cmul(defvector)
+
+ddefw = utils.avoid_nans(ddefw)
+dLdw2 = utils.avoid_nans(dLdw2)
+dLdw1 = utils.avoid_nans(dLdw1)
+
+net:zeroGradParameters()
+net:backward(data, dLds)
+
+-- ======= updating learnable parameters =======
+net:updateParameters(learning_rate)
+
+net.defw = net.defw - learning_rate * ddefw
+net.defw[{{}, {}, 1}] = torch.cmax(net.defw[{{}, {}, 1}], torch.Tensor(batch_size, #start_rows):fill(0.01))
+net.defw[{{}, {}, 3}] = torch.cmax(net.defw[{{}, {}, 3}], torch.Tensor(batch_size, #start_rows):fill(0.01))
+net.defw[{{}, 18, 1}] = 1000.0
+net.defw[{{}, 18, 3}] = 1000.0
+
+net.w_class = net.w_class - learning_rate * dLdw_class
+net.w2 = net.w2 - learning_rate * dLdw2
+net.w2[{{1, 7}, {1, 7}}] = net.w2[{{1, 7}, {1, 7}}]:cmul(connections2:t())
+net.w1 = net.w1 - learning_rate * dLdw1
+net.w1[{{1, 6}, {1, 7}}] = net.w1[{{1, 6}, {1, 7}}]:cmul(connections1:t())
