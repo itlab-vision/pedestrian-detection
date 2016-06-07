@@ -2,7 +2,7 @@ require 'torch'
 
 local init = {}
 
-init.epoches_num = 5
+init.epoches_num = 1
 init.batch_size = 50
 init.learning_rate = 0.025
 

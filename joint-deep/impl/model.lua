@@ -78,20 +78,20 @@ function model.forward(net, data)
             local dst_col = torch.Tensor(height, width)
             local dst = torch.Tensor(height, width)
             local iy_tmp = torch.Tensor(height, width)
+            local ix_tmp = torch.Tensor(height, width)
             local iy = torch.Tensor(height, width)
             local ix = torch.Tensor(height, width)
             for j = 1, width do
                 dt.dt1d_by_column(map, dst_col, iy_tmp, j, -net.defw[{p, 3}], -net.defw[{p, 4}])
             end
             for i = 1, height do
-                dt.dt1d_by_row(dst_col, dst, ix, i, -net.defw[{p, 1}], -net.defw[{p, 2}])
+                dt.dt1d_by_row(dst_col, dst, ix_tmp, i, -net.defw[{p, 1}], -net.defw[{p, 2}])
             end
-
-            ix = utils.avoid_nans(ix)
 
             for i = 1, height do
                 for j = 1, width do
-                    ix[i][j] = ix[i][j] + 1
+                    ix[i][j] = ix_tmp[i][j] + 1
+                    iy[i][j] = iy_tmp[ix_tmp[i][j] + 1][j] + 1
                 end
             end
             dx = ppos[p][2] - ix[ppos[p][1]][ppos[p][2]]
@@ -168,12 +168,6 @@ function model.backward(net, data, labels)
     end
     net.ddefw = torch.sum(ddef, 2):squeeze(2):t() / model.batch_size
     net.db4 = torch.sum(dv, 1):squeeze(1) / model.batch_size
-
-    net.ddefw = utils.avoid_nans(net.ddefw)
-    net.dLdw_class = utils.avoid_nans(net.dLdw_class)
-    net.dLdw2 = utils.avoid_nans(net.dLdw2)
-    net.dLdw1 = utils.avoid_nans(net.dLdw1)
-    net.db4 = utils.avoid_nans(net.db4)
 
     net:zeroGradParameters()
     net:backward(data, dLds)

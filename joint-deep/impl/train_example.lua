@@ -6,11 +6,14 @@ m = require 'model'
 epoches_num = init.epoches_num
 batch_size = init.batch_size
 
-data = torch.rand(1000, 3, 84, 28)
-labels = torch.Tensor(1000, 2):fill(0)
-labels[{{}, {2}}] = torch.Tensor(1000, 1):fill(1)
+data = torch.rand(120, 3, 84, 28)
+labels = torch.Tensor(120, 2):fill(-1)
+labels[{{}, {2}}] = torch.Tensor(120, 1):fill(1)
 
 batches_num = math.floor(data:size(1) / batch_size)
+
+-- net = torch.load('model1.t7')
+-- print(net:parameters())
 
 net = m.set_4layer_net(batch_size)
 for ep = 1, epoches_num do
@@ -23,5 +26,6 @@ for ep = 1, epoches_num do
         m.updateParameters(net)
         print('batch ' .. k .. ' done')
     end
-    torch.save('model' .. ep .. 't7', net)
+    print(net:parameters()[1])
+    -- torch.save('model' .. ep .. '.t7', net)
 end

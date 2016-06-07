@@ -24,9 +24,9 @@ function dt.dt1d_by_column(src, dst, iy, col_id, a, b)
     for q = 0, n - 1 do
         while z[k + 2] < q do
             k = k + 1
-            dst[q + 1][col_id] = a*(q - v[k + 1])*(q - v[k + 1]) + b*(q - v[k + 1]) + src[v[k + 1]+1][col_id]
-            iy[q + 1][col_id] = v[k + 1]
         end
+        dst[q + 1][col_id] = a*(q - v[k + 1])*(q - v[k + 1]) + b*(q - v[k + 1]) + src[v[k + 1]+1][col_id]
+        iy[q + 1][col_id] = v[k + 1]
     end
 end
 
@@ -54,9 +54,9 @@ function dt.dt1d_by_row(src, dst, iy, row_id, a, b)
     for q = 0, n - 1 do
         while z[k + 2] < q do
             k = k + 1
-            dst[row_id][q + 1] = a*(q - v[k + 1])*(q - v[k + 1]) + b*(q - v[k + 1]) + src[row_id][v[k + 1]+1]
-            iy[row_id][q + 1] = v[k + 1]
         end
+        dst[row_id][q + 1] = a*(q - v[k + 1])*(q - v[k + 1]) + b*(q - v[k + 1]) + src[row_id][v[k + 1]+1]
+        iy[row_id][q + 1] = v[k + 1]
     end
 end
 
