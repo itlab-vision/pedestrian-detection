@@ -66,6 +66,9 @@ for ep = 1, epoches_num do
         end
         file_idx = file_idx + 1
         fname = data_dir .. '/train_x_' .. file_idx .. '.txt'
+        if batch_idx >= 100 then
+            break
+        end
     end
 
     elapsed_time = os.time() - start_time

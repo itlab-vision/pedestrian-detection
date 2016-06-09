@@ -31,8 +31,6 @@ function model.set_4layer_net(batch_size)
     net.c2 = init.c2
     net.b4 = init.b4
 
-    net.defvector = torch.Tensor(model.batch_size, parts_count, 4)
-    net.part_scores = torch.Tensor(model.batch_size, parts_count)
     net.mapSizes = torch.Tensor(parts_count, 2)
 
     -- Layer 2
@@ -45,11 +43,11 @@ function model.set_4layer_net(batch_size)
 
     -- Layer 4
     k_sizes = {}
-    ppos = {}
+    net.ppos = {}
     net.defw = torch.Tensor(parts_count, 4)
     for i = 1, parts_count do
         k_sizes[i] = {end_rows[i] - start_rows[i] + 1, end_cols[i] - start_cols[i] + 1}
-        ppos[i] = {start_rows[i] + 2, start_cols[i]}
+        net.ppos[i] = {start_rows[i] + 2, start_cols[i]}
         if i ~= 18 then
             net.defw[{i, {}}] = torch.Tensor({0.05, 0.0, 0.05, 0.0})
         else
@@ -68,6 +66,8 @@ end
 
 function model.forward(net, data)
     net:forward(data)
+    defvector = torch.Tensor(model.batch_size, parts_count, 4)
+    part_scores = torch.Tensor(model.batch_size, parts_count)
     for p = 1, parts_count do
         for k = 1, model.batch_size do
             map = net.output[p][{k, {}, {}, {}}]:squeeze(1)
@@ -94,31 +94,31 @@ function model.forward(net, data)
                     iy[i][j] = iy_tmp[ix_tmp[i][j] + 1][j] + 1
                 end
             end
-            dx = ppos[p][2] - ix[ppos[p][1]][ppos[p][2]]
-            dy = ppos[p][1] - iy[ppos[p][1]][ppos[p][2]]
-            net.defvector[{k, p, {}}] = -torch.Tensor({dx*dx, dx, dy*dy, dy})
-            net.part_scores[k][p] = dst[ppos[p][1]][ppos[p][2]] + net.b4[p]
+            dx = net.ppos[p][2] - ix[net.ppos[p][1]][net.ppos[p][2]]
+            dy = net.ppos[p][1] - iy[net.ppos[p][1]][net.ppos[p][2]]
+            defvector[{k, p, {}}] = -torch.Tensor({dx*dx, dx, dy*dy, dy})
+            part_scores[k][p] = dst[net.ppos[p][1]][net.ppos[p][2]] + net.b4[p]
         end
     end
 
-    s1 = net.part_scores[{{}, {1, 6}}]
-    s2 = torch.Tensor(net.part_scores:size(1), 14):fill(0)
-    s2[{{}, {1, 7}}] = net.part_scores[{{}, {7, 13}}]
-    s3 = torch.Tensor(net.part_scores:size(1), 14):fill(0)
-    s3[{{}, {1, 7}}] = net.part_scores[{{}, {14, 20}}]
+    s1 = part_scores[{{}, {1, 6}}]
+    s2 = torch.Tensor(part_scores:size(1), 14):fill(0)
+    s2[{{}, {1, 7}}] = part_scores[{{}, {7, 13}}]
+    s3 = torch.Tensor(part_scores:size(1), 14):fill(0)
+    s3[{{}, {1, 7}}] = part_scores[{{}, {14, 20}}]
 
-    net.h1 = torch.Tensor(net.part_scores:size(1), 7)
+    net.h1 = torch.Tensor(part_scores:size(1), 7)
     net.h1[{{}, {1, 6}}] = torch.sigmoid(s1)
     net.h1[{{}, {7}}] = 1.0
 
-    net.h2 = torch.Tensor(net.part_scores:size(1), 15)
+    net.h2 = torch.Tensor(part_scores:size(1), 15)
     c1 = torch.reshape(net.c1, 1, net.c1:size(1))
-    net.h2[{{}, {1, 14}}] = torch.sigmoid(-(net.h1 * net.w1 + torch.cmul(s2, c1:repeatTensor(net.part_scores:size(1), 1))))
+    net.h2[{{}, {1, 14}}] = torch.sigmoid(net.h1 * net.w1 + torch.cmul(s2, c1:repeatTensor(part_scores:size(1), 1)))
     net.h2[{{}, {15}}] = 1.0
 
-    net.h3 = torch.Tensor(net.part_scores:size(1), 15)
+    net.h3 = torch.Tensor(part_scores:size(1), 15)
     c2 = torch.reshape(net.c2, 1, net.c2:size(1))
-    net.h3[{{}, {1, 14}}] = torch.sigmoid(-(net.h2 * net.w2 + torch.cmul(s3, c2:repeatTensor(net.part_scores:size(1), 1))))
+    net.h3[{{}, {1, 14}}] = torch.sigmoid(net.h2 * net.w2 + torch.cmul(s3, c2:repeatTensor(part_scores:size(1), 1)))
     net.h3[{{}, {15}}] = 1.0
 
     targetout = torch.exp(net.h3 * net.w_class) -- may be sigmoid?!
@@ -145,9 +145,9 @@ function model.backward(net, data, labels)
     dLds1 = lp1 * 1.0   -- bsx6
 
     dLdc = torch.Tensor(model.batch_size, parts_count, 4)
-    dLdc[{{}, {1, 6}, {}}] = dLds1[{{}, {1, 6}}]:repeatTensor(1, 1, 4):cmul(net.defvector[{{}, {1, 6}, {}}])
-    dLdc[{{}, {7, 13}, {}}] = dLds2[{{}, {1, 7}}]:repeatTensor(1, 1, 4):cmul(net.defvector[{{}, {7, 13}, {}}])
-    dLdc[{{}, {14, 20}, {}}] = dLds3[{{}, {1, 7}}]:repeatTensor(1, 1, 4):cmul(net.defvector[{{}, {14, 20}, {}}])
+    dLdc[{{}, {1, 6}, {}}] = dLds1[{{}, {1, 6}}]:repeatTensor(1, 1, 4):cmul(defvector[{{}, {1, 6}, {}}])
+    dLdc[{{}, {7, 13}, {}}] = dLds2[{{}, {1, 7}}]:repeatTensor(1, 1, 4):cmul(defvector[{{}, {7, 13}, {}}])
+    dLdc[{{}, {14, 20}, {}}] = dLds3[{{}, {1, 7}}]:repeatTensor(1, 1, 4):cmul(defvector[{{}, {14, 20}, {}}])
 
     dLds = {}
     dv = torch.Tensor(model.batch_size, parts_count)
@@ -164,7 +164,7 @@ function model.backward(net, data, labels)
 
     ddef = dv:repeatTensor(4, 1, 1)
     for i = 1, 4 do
-        ddef[{{i}, {}, {}}] = ddef[{{i}, {}, {}}]:cmul(net.defvector[{{}, {}, {i}}])
+        ddef[{{i}, {}, {}}] = ddef[{{i}, {}, {}}]:cmul(defvector[{{}, {}, {i}}])
     end
     net.ddefw = torch.sum(ddef, 2):squeeze(2):t() / model.batch_size
     net.db4 = torch.sum(dv, 1):squeeze(1) / model.batch_size
