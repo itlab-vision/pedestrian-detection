@@ -123,6 +123,7 @@ function model.forward(net, data)
 
     targetout = torch.exp(net.h3 * net.w_class) -- may be sigmoid?!
     net.o = torch.cdiv(targetout, torch.repeatTensor(torch.sum(targetout, 2), 1, targetout:size(2)))
+    print(net.o)
 end
 
 function model.backward(net, data, labels)
@@ -144,29 +145,32 @@ function model.backward(net, data, labels)
     dLds2 = lp2 * 1.0   -- bsx14
     dLds1 = lp1 * 1.0   -- bsx6
 
-    dLdc = torch.Tensor(model.batch_size, parts_count, 4)
-    dLdc[{{}, {1, 6}, {}}] = dLds1[{{}, {1, 6}}]:repeatTensor(1, 1, 4):cmul(defvector[{{}, {1, 6}, {}}])
-    dLdc[{{}, {7, 13}, {}}] = dLds2[{{}, {1, 7}}]:repeatTensor(1, 1, 4):cmul(defvector[{{}, {7, 13}, {}}])
-    dLdc[{{}, {14, 20}, {}}] = dLds3[{{}, {1, 7}}]:repeatTensor(1, 1, 4):cmul(defvector[{{}, {14, 20}, {}}])
+    -- dLdc = torch.Tensor(model.batch_size, parts_count, 4)
+    -- dLdc[{{}, {1, 6}, {}}] = dLds1[{{}, {1, 6}}]:repeatTensor(1, 1, 4):cmul(defvector[{{}, {1, 6}, {}}])
+    -- dLdc[{{}, {7, 13}, {}}] = dLds2[{{}, {1, 7}}]:repeatTensor(1, 1, 4):cmul(defvector[{{}, {7, 13}, {}}])
+    -- dLdc[{{}, {14, 20}, {}}] = dLds3[{{}, {1, 7}}]:repeatTensor(1, 1, 4):cmul(defvector[{{}, {14, 20}, {}}])
 
     dLds = {}
     dv = torch.Tensor(model.batch_size, parts_count)
     dv[{{}, {1, 6}}] = dLds1[{{}, {1, 6}}]
     dv[{{}, {7, 13}}] = dLds2[{{}, {1, 7}}]
-    dv[{{}, {14, 20}}] = dLds3[{{}, {1, 7}}]
+    dv[{{}, {14, 20}}] = dLds2[{{}, {8, 14}}]
     for p = 1, parts_count do
         dLds[p] = torch.Tensor(model.batch_size, 1, net.mapSizes[p][1], net.mapSizes[p][2])
         for m = 1, model.batch_size do
-            d = torch.Tensor(1, net.mapSizes[p][1], net.mapSizes[p][2]):fill(dv[{m, p}])
+            d = torch.Tensor(1, net.mapSizes[p][1], net.mapSizes[p][2]):fill(0.0)
+            d[{{}, {net.ppos[p][1]}, {net.ppos[p][2]}}] = dv[{m, p}]
             dLds[p][{m, {}, {}}] = d
         end
     end
 
-    ddef = dv:repeatTensor(4, 1, 1)
-    for i = 1, 4 do
-        ddef[{{i}, {}, {}}] = ddef[{{i}, {}, {}}]:cmul(defvector[{{}, {}, {i}}])
+    net.ddefw = torch.Tensor(parts_count, 4)
+    for p = 1, parts_count do
+        ddef = dv[{{}, p}]
+        ddef = ddef:repeatTensor(4, 1)
+        ddef = ddef:t():cmul(defvector[{{}, {p}, {}}]:squeeze(2))
+        net.ddefw[{p, {}}] = torch.sum(ddef, 1):squeeze(1) / model.batch_size
     end
-    net.ddefw = torch.sum(ddef, 2):squeeze(2):t() / model.batch_size
     net.db4 = torch.sum(dv, 1):squeeze(1) / model.batch_size
 
     net:zeroGradParameters()
@@ -187,7 +191,25 @@ function model.updateParameters(net)
     net.w2 = net.w2 - learning_rate * net.dLdw2
     net.w2[{{1, 7}, {1, 7}}] = net.w2[{{1, 7}, {1, 7}}]:cmul(connections2:t())
     net.w1 = net.w1 - learning_rate * net.dLdw1
-    net.w1[{{1, 6}, {1, 7}}] = net.w1[{{1, 6}, {1, 7}}]:cmul(connections1:t())    
+    net.w1[{{1, 6}, {1, 7}}] = net.w1[{{1, 6}, {1, 7}}]:cmul(connections1:t())
+
+    -- Regularize weights
+    regval = 0.01
+    w1_tmp = net.w1[{{1, 6}, {1, 7}}]
+    w1_tmp[torch.lt(w1_tmp, regval)] = regval
+    net.w1[{{1, 6}, {1, 7}}] = w1_tmp
+    net.w1[{{-1}, torch.gt(net.w1[{{-1}, {}}], -0.1)}] = -0.1
+    w2_tmp = net.w2[{{1, 7}, {1, 7}}]
+    w2_tmp[torch.lt(w2_tmp, regval)] = regval
+    net.w2[{{1, 7}, {1, 7}}] = w2_tmp
+    net.w2[{{-1}, torch.gt(net.w2[{{-1}, {}}], -0.1)}] = -0.1
+    w_class_tmp = net.w_class[{{1, 7}, 1}]
+    w_class_tmp[torch.lt(w_class_tmp, regval)] = regval
+    net.w_class[{{1, 7}, 1}] = w_class_tmp
+    net.w_class[{{}, 2}] = -net.w_class[{{}, 1}]
+
+    net.c1[torch.lt(net.c1, regval)] = regval
+    net.c2[torch.lt(net.c2, regval)] = regval
 end
 
 return model

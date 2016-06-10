@@ -34,6 +34,8 @@ if (utils.dir_exists(test_out_path) == false) then
     lfs.mkdir(test_out_path)
 end
 
+-- net = m.set_4layer_net(test_batch_size)
+
 m.batch_size = test_batch_size
 net = torch.load(model_path)
 
