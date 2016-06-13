@@ -4,6 +4,7 @@ require 'math'
 dt = require 'dt'
 utils = require 'utils'
 init = require 'init'
+require 'torch_extra'
 
 local model = {}
 
@@ -17,8 +18,10 @@ local parts_count = #start_rows
 local connections1 = init.connections1
 local connections2 = init.connections2
 
-function model.set_4layer_net(batch_size)
-    model.batch_size = batch_size
+function model.set_4layer_net(pos_batch_size, neg_batch_size)
+    model.pos_batch_size = pos_batch_size
+    model.neg_batch_size = neg_batch_size
+    model.batch_size = pos_batch_size + neg_batch_size
 
     -- Layer 1
     net = nn.Sequential()
@@ -44,45 +47,7 @@ function model.set_4layer_net(batch_size)
     m.bias = torch.Tensor(init.b2)
 
     net:add(nn.Tanh())
-    net:add(nn.Abs())
-
-    -- local AbsLayer, parent = torch.class('nn.AbsLayer', 'nn.Abs')
-
-    -- function AbsLayer:updateGradInput(input, gradOutput)
-    --     local sign = torch.Tensor(#input):fill(1.0)
-    --     sign[torch.lt(input, 0.0)] = -1.0
-    --     self.gradInput = gradOutput:cmul(sign)
-    --     return self.gradInput
-    -- end
-
-    -- function AbsLayer:updateOutput(input)
-    --     self.output = torch.abs(input)
-    --     return self.output
-    -- end
-
-    -- local function layerAbs(nnmodule)
-    --     local layer = {}
-    --     local layer_mt = {__index = layer}
-    --     function layer:create()
-    --         local newinst = {}
-    --         setmetatable(newinst, layer_mt)
-    --         return newinst
-    --     end
-    --     if nnmodule then
-    --         setmetatable(layer, {__index = nnmodule})
-    --     end
-    --     return layer
-    -- end
-    -- local m = layerAbs(nn.Abs())
-    -- function m.updateGradInput(self, input, gradOutput)
-    --     sign = torch.Tensor(#input):fill(1.0)
-    --     sign[torch.lt(input, 0.0)] = -1.0
-    --     self.gradInput = gradOutput:cmul(sign)
-    --     return self.gradInput
-    -- end
-    -- net:add(m)
-
-    -- net:add(AbsLayer)
+    -- net:add(nn.Abs())
 
     -- Layer 3
     net:add(nn.SpatialAveragePooling(4, 4, 4, 4))
@@ -101,21 +66,13 @@ function model.set_4layer_net(batch_size)
         end
     end
 
-    local n = nn.ConcatTable()
-    for i = 1, #k_sizes do
-        n:add(nn.SpatialConvolution(64, 1, k_sizes[i][2], k_sizes[i][1]))
-    end
-    net:add(n)
-
-    local concatTable = net:findModules('nn.ConcatTable')[1]
+    local kWs = torch.Tensor(parts_count)
+    local kHs = torch.Tensor(parts_count)
     for p = 1, parts_count do
-        local m = concatTable.modules[p]
-        for i = 1, #(init.k4) do
-            k = init.k4[i][p]
-            m.weight[1][{i, {}, {}}] = torch.Tensor(k)
-        end
-        m.bias = torch.Tensor({init.b4[p]})
+        kWs[p] = k_sizes[p][2]
+        kHs[p] = k_sizes[p][1]
     end
+    net:add(nn.CustomSpatialConvolution(64, 20, kWs, kHs))
 
     return net
 end
@@ -155,7 +112,7 @@ function model.forward(net, data)
             dy = net.ppos[p][1] - iy[net.ppos[p][1]][net.ppos[p][2]]
             defvector[{k, p, {}}] = -torch.Tensor({dx*dx, dx, dy*dy, dy})
             local weights, grads = net:parameters()
-            local b = weights[2 * p + 2]
+            local b = weights[4][p]
             part_scores[k][p] = dst[net.ppos[p][1]][net.ppos[p][2]] + b
         end
     end
@@ -183,9 +140,21 @@ function model.forward(net, data)
     net.h3[{{}, {15}}] = 1.0
 
     local targetout = torch.exp(net.h3 * net.w_class)
-    -- print(targetout)
     net.o = torch.cdiv(targetout, torch.repeatTensor(torch.sum(targetout, 2), 1, targetout:size(2)))
     -- print(net.o)
+
+    local characteristic1 =
+        torch.sum(net.o[{{1, model.pos_batch_size}, 1}]) / (model.pos_batch_size)
+    local characteristic2 =
+        torch.sum(net.o[{{model.pos_batch_size + 1, model.batch_size}, 1}]) / (model.neg_batch_size)
+    print(characteristic1)
+    print(characteristic2)
+
+    if (characteristic1 >= 0.7) and (characteristic2 <= 0.3) then
+        model.can_save = true
+    else
+        model.can_save = false
+    end
 end
 
 function model.backward(net, data, labels)
@@ -214,13 +183,6 @@ function model.backward(net, data, labels)
     dv[{{}, {1, 6}}] = dLds1[{{}, {1, 6}}]
     dv[{{}, {7, 13}}] = dLds2[{{}, {1, 7}}]
     dv[{{}, {14, 20}}] = dLds2[{{}, {8, 14}}]
-    -- dvs = math.abs(torch.sum(dv[{{1}, {}}], 2)[1][1])
-    -- print(dvs)
-    -- if dvs > 0.1 then
-    --     learning_rate = 0.01
-    -- else
-    --     learning_rate = 0.03
-    -- end
     for p = 1, parts_count do
         dLds[p] = torch.Tensor(model.batch_size, 1, net.mapSizes[p][1], net.mapSizes[p][2])
         for m = 1, model.batch_size do
@@ -243,6 +205,11 @@ function model.backward(net, data, labels)
 end
 
 function model.updateParameters(net)
+    if model.ready_to_save and model.can_save then
+        -- Good model. Don't change parameters
+        return
+    end
+
     net:updateParameters(learning_rate)
 
     net.defw = net.defw - learning_rate * net.ddefw
@@ -274,12 +241,14 @@ function model.updateParameters(net)
 
     net.c2[torch.lt(net.c2, regval)] = regval
     net.c3[torch.lt(net.c3, regval)] = regval
+end
 
-    local concatTable = net:findModules('nn.ConcatTable')[1]
-    local m = concatTable.modules[19]
-    m.weight[1][{{}, {4, -1}, {4, 5}}] = 0.0
-    local m = concatTable.modules[20]
-    m.weight[1][{{}, {4, -1}, {1, 2}}] = 0.0
+function model.readyToSave(is_ready)
+    model.ready_to_save = is_ready
+end
+
+function model.canSave()
+    return model.can_save
 end
 
 return model
