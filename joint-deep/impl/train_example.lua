@@ -8,7 +8,10 @@ m = require 'model'
 
 epoches_num = init.epoches_num
 batch_size = init.batch_size
-dataset_name = 'CaltechTrain'
+-- dataset_name = 'CaltechTrain'
+-- data_size = 64468
+dataset_name = 'INRIATrain'
+data_size = 59370
 if (utils.dir_exists('models') == false) then
     lfs.mkdir('models')
 end
@@ -17,7 +20,6 @@ if (utils.dir_exists(models_path) == false) then
     lfs.mkdir(models_path)
 end
 
-data_size = 64468
 for i = 1, #arg do
     if arg[i] == '--data-size' then
         data_size = tonumber(arg[i + 1])
@@ -70,6 +72,9 @@ print('pos_count: ' .. pos_count .. ', neg_count: ' .. neg_count)
 print('pos_batch_size: ' .. pos_batch_size .. ', neg_batch_size: ' .. neg_batch_size)
 
 net = m.set_4layer_net(batch_size)
+-- model_path = models_path .. '/model10.t7'
+-- torch.save(model_path, net)
+-- os.exit()
 
 for ep = 1, epoches_num do
     print('Epoch ' .. ep .. ' started')

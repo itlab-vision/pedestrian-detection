@@ -85,5 +85,12 @@ while(utils.file_exists(fname)) do
     file_idx = file_idx + 1
     fname = test_data_path .. 'test_x_' .. file_idx .. '.txt'
 end
+m.batch_size = chunk:size(1)
+m.forward(net, chunk)
+out = net.o
+for i = 1, out:size(1) do
+    fo:write(out[i][1] .. ', ' .. out[i][2] .. '\n')
+end
+print('Last ' .. chunk:size(1) .. ' images tested')
 
 fo:close()
