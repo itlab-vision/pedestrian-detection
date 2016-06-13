@@ -8,7 +8,10 @@ m = require 'model'
 
 epoches_num = init.epoches_num
 batch_size = init.batch_size
-dataset_name = 'CaltechTrain'
+-- dataset_name = 'CaltechTrain'
+-- data_size = 64468
+dataset_name = 'INRIATrain'
+data_size = 59370
 if (utils.dir_exists('models') == false) then
     lfs.mkdir('models')
 end
@@ -17,7 +20,6 @@ if (utils.dir_exists(models_path) == false) then
     lfs.mkdir(models_path)
 end
 
-data_size = 64468
 for i = 1, #arg do
     if arg[i] == '--data-size' then
         data_size = tonumber(arg[i + 1])
@@ -69,8 +71,13 @@ pos_idxs = pos_idxs:repeatTensor(pos_scale_factor)
 print('pos_count: ' .. pos_count .. ', neg_count: ' .. neg_count)
 print('pos_batch_size: ' .. pos_batch_size .. ', neg_batch_size: ' .. neg_batch_size)
 
-net = m.set_4layer_net(batch_size)
+net = m.set_4layer_net(pos_batch_size, neg_batch_size)
+-- model_path = models_path .. '/model10.t7'
+-- torch.save(model_path, net)
+-- os.exit()
 
+saved_models_count = 0
+local ready_to_save = false
 for ep = 1, epoches_num do
     print('Epoch ' .. ep .. ' started')
     pos_perm_idxs = torch.randperm(pos_count * pos_scale_factor):type('torch.LongTensor')
@@ -79,6 +86,10 @@ for ep = 1, epoches_num do
     start_time = os.time()
 
     for k = 1, batch_count do
+        if (k / batch_count >= 0.95) then
+            ready_to_save = true
+            m.readyToSave(true)
+        end
         pos_selection = pos_idxs:index(1, pos_perm_idxs[{{(k - 1) * pos_batch_size + 1, k * pos_batch_size}}])
         neg_selection = neg_idxs:index(1, neg_perm_idxs[{{(k - 1) * neg_batch_size + 1, k * neg_batch_size}}])
         batch_x = torch.Tensor(batch_size, data:size(2), data:size(3), data:size(4))
@@ -92,10 +103,16 @@ for ep = 1, epoches_num do
         m.backward(net, batch_x, batch_y)
         m.updateParameters(net)
         print('Batch ' .. k .. ' done')
-    end
 
-    elapsed_time = os.time() - start_time
-    model_path = models_path .. '/model' .. ep .. '.t7'
-    torch.save(model_path, net)
-    print('Model trained and saved to ' .. model_path .. '. Elapsed time: ' .. elapsed_time .. ' secs')
+        if ready_to_save and m.canSave() then
+            elapsed_time = os.time() - start_time
+            saved_models_count = saved_models_count + 1
+            model_path = models_path .. '/model' .. saved_models_count .. '.t7'
+            torch.save(model_path, net)
+            print('Model trained and saved to ' .. model_path .. '. Elapsed time: ' .. elapsed_time .. ' secs')
+            ready_to_save = false
+            m.readyToSave(false)
+            break
+        end
+    end
 end

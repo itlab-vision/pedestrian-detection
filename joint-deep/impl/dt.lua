@@ -30,7 +30,7 @@ function dt.dt1d_by_column(src, dst, iy, col_id, a, b)
     end
 end
 
-function dt.dt1d_by_row(src, dst, iy, row_id, a, b)
+function dt.dt1d_by_row(src, dst, ix, row_id, a, b)
     local n = src:size()[2]
     local v = {}
     local z = {}
@@ -56,7 +56,7 @@ function dt.dt1d_by_row(src, dst, iy, row_id, a, b)
             k = k + 1
         end
         dst[row_id][q + 1] = a*(q - v[k + 1])*(q - v[k + 1]) + b*(q - v[k + 1]) + src[row_id][v[k + 1]+1]
-        iy[row_id][q + 1] = v[k + 1]
+        ix[row_id][q + 1] = v[k + 1]
     end
 end
 
