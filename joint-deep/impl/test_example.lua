@@ -4,7 +4,7 @@ init = require 'init'
 m = require 'model'
 require 'torch'
 
-for i = 1, 7, 2 do
+for i = 1, #arg, 2 do
     if arg[i] == '--test-data-path' then
         test_data_path = arg[i + 1]
     end
