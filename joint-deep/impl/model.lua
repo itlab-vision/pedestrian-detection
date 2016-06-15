@@ -18,7 +18,7 @@ local parts_count = #start_rows
 local connections1 = init.connections1
 local connections2 = init.connections2
 
-function model.set_4layer_net(pos_batch_size, neg_batch_size)
+function model.initializeNet(pos_batch_size, neg_batch_size)
     model.pos_batch_size = pos_batch_size
     model.neg_batch_size = neg_batch_size
     model.batch_size = pos_batch_size + neg_batch_size
@@ -143,17 +143,19 @@ function model.forward(net, data)
     net.o = torch.cdiv(targetout, torch.repeatTensor(torch.sum(targetout, 2), 1, targetout:size(2)))
     -- print(net.o)
 
-    local characteristic1 =
-        torch.sum(net.o[{{1, model.pos_batch_size}, 1}]) / (model.pos_batch_size)
-    local characteristic2 =
-        torch.sum(net.o[{{model.pos_batch_size + 1, model.batch_size}, 1}]) / (model.neg_batch_size)
-    print(characteristic1)
-    print(characteristic2)
+    if pos_batch_size and neg_batch_size then
+        local pos_characteristic =
+            torch.sum(net.o[{{1, model.pos_batch_size}, 1}]) / (model.pos_batch_size)
+        local neg_characteristic =
+            torch.sum(net.o[{{model.pos_batch_size + 1, model.batch_size}, 1}]) / (model.neg_batch_size)
+        print(pos_characteristic)
+        print(neg_characteristic)
 
-    if (characteristic1 >= 0.7) and (characteristic2 <= 0.3) then
-        model.can_save = true
-    else
-        model.can_save = false
+        if (pos_characteristic > 0.5) and (neg_characteristic < 0.5) then
+            model.can_save = true
+        else
+            model.can_save = false
+        end
     end
 end
 

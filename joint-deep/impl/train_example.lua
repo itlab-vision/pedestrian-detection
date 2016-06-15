@@ -6,12 +6,25 @@ utils = require 'utils'
 init = require 'init'
 m = require 'model'
 
+for i = 1, #arg, 2 do
+    if arg[i] == '--train-data-path' then
+        train_data_path = arg[i + 1]
+    end
+    if arg[i] == '--dataset-name' then
+        dataset_name = arg[i + 1]
+    end
+    if arg[i] == '--data-size' then
+        data_size = tonumber(arg[i + 1])
+    end
+end
+
+if (train_data_path == nil or dataset_name == nil or
+    data_size == nil) then
+    print('Incorrect arguments')
+    os.exit()
+end
+
 epoches_num = init.epoches_num
-batch_size = init.batch_size
--- dataset_name = 'CaltechTrain'
--- data_size = 64468
-dataset_name = 'INRIATrain'
-data_size = 59370
 if (utils.dir_exists('models') == false) then
     lfs.mkdir('models')
 end
@@ -20,17 +33,27 @@ if (utils.dir_exists(models_path) == false) then
     lfs.mkdir(models_path)
 end
 
-for i = 1, #arg do
-    if arg[i] == '--data-size' then
-        data_size = tonumber(arg[i + 1])
+-- Load labels
+labels_dir = dataset_name .. '/train_y'
+labels = torch.Tensor(data_size, 2)
+loaded_data = 0
+file_idx = 0
+fname = labels_dir .. '/train_y_' .. file_idx .. '.txt'
+while(utils.file_exists(fname)) do
+    dofile(fname)
+    r_chunk = torch.Tensor(train_y)
+    labels[{{loaded_data + 1, loaded_data + r_chunk:size(1)}, {}}] = r_chunk
+    loaded_data = loaded_data + r_chunk:size(1)
+    file_idx = file_idx + 1
+    fname = labels_dir .. '/train_y_' .. file_idx .. '.txt'
+    if loaded_data >= data_size then
+        break
     end
 end
-dofile(dataset_name .. '/train_y.txt')
-labels = torch.Tensor(train_y)
 labels = labels[{{1, data_size}, {}}]
-data_dir = dataset_name .. '/train_x'
 
 -- Load data
+data_dir = dataset_name .. '/train_x'
 data = torch.Tensor(data_size, 3, 84, 28)
 loaded_data = 0
 file_idx = 0
@@ -47,6 +70,7 @@ while(utils.file_exists(fname)) do
     end
 end
 
+-- Prepare train batch
 pos_count = torch.sum(torch.eq(labels[{{}, {1}}], 1))
 neg_count = torch.sum(torch.eq(labels[{{}, {1}}], 0))
 neg_batch_size = init.neg_batch_size
@@ -71,10 +95,8 @@ pos_idxs = pos_idxs:repeatTensor(pos_scale_factor)
 print('pos_count: ' .. pos_count .. ', neg_count: ' .. neg_count)
 print('pos_batch_size: ' .. pos_batch_size .. ', neg_batch_size: ' .. neg_batch_size)
 
-net = m.set_4layer_net(pos_batch_size, neg_batch_size)
--- model_path = models_path .. '/model10.t7'
--- torch.save(model_path, net)
--- os.exit()
+-- Initialize net
+net = m.initializeNet(pos_batch_size, neg_batch_size)
 
 saved_models_count = 0
 local ready_to_save = false
